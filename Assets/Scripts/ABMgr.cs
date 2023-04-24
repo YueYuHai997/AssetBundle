@@ -1,7 +1,10 @@
 using System.Collections;
 using System.Collections.Generic;
+using UnityEditor;
 using UnityEngine;
 using UnityEngine.Events;
+using UnityEngine.SceneManagement;
+
 
 public class ABMgr : MonoBehaviour
 {
@@ -34,14 +37,56 @@ public class ABMgr : MonoBehaviour
 
     private void Awake()
     {
+        Load();
+    }
+
+    async public void Load()
+    {
+        await System.Threading.Tasks.Task.Delay(3000);
+
+        ////异步方法
+        //LoadSceneAsync("scene 1", (x) =>
+        //{
+        //    //SceneManager.LoadScene(x, LoadSceneMode.Additive);
+        //    Manager_Scene.LoadSceneAsync(x, LoadSceneMode.Additive, (_) => 
+        //    {
+        //        for (int i = 0; i < 100; i++)
+        //        {
+        //            //Instantiate(LoadRes<GameObject>("gun", "MCX"));
+        //            LoadResAsync<GameObject>("zombie1", "zombie1", (_) => { Instantiate(_); });
+        //            //LoadScnen("scene 1", (_) => { Manager_Scene.LoadSceneAsync(_, LoadSceneMode.Additive); });
+        //        }
+        //    });
+        //});
+
+        //同步加载方法
+        //LoadScnen("scene 1", (x) =>
+        //{
+        //    Manager_Scene.LoadSence(x, LoadSceneMode.Additive);
+
+        //    for (int i = 0; i < 10; i++)
+        //    {
+        //        Instantiate(LoadRes<GameObject>("zombie1", "zombie1"));
+        //    }
+        //});
+
+
         for (int i = 0; i < 10; i++)
         {
-            LoadResAsync<GameObject>("gun", "MCX", (x) => { Instantiate(x); });
+            Instantiate(LoadRes<GameObject>("zombie1", "zombie1"));
         }
+
+        //LocalLoad();
     }
 
     AssetBundleManifest abmf;
+    /// <summary> AssetBundle管理脚本 用于检测是否是重复加载AssetBundle管理脚本   </summary>
     private Dictionary<string, AssetBundle> abDic = new Dictionary<string, AssetBundle>();
+
+    /// <summary> 加载内容记录提升重复加载效率   </summary>
+    private Dictionary<string, dynamic> LoadedAss = new Dictionary<string, dynamic>();
+
+    #region 同步加载
 
     /// <summary>
     /// 同步加载AB包
@@ -86,66 +131,110 @@ public class ABMgr : MonoBehaviour
     public object LoadRes(string abName, string ResName)
     {
         LoadAB(abName);
-        return abDic[abName].LoadAsset(ResName);
+        if (!LoadedAss.ContainsKey(abName))
+        {
+            LoadedAss.Add(abName, abDic[abName].LoadAsset(ResName));
+        }
+        return LoadedAss[abName];
     }
 
     public T LoadRes<T>(string abName, string ResName) where T : Object
     {
         LoadAB(abName);
-        return abDic[abName].LoadAsset<T>(ResName);
+        if (!LoadedAss.ContainsKey(abName))
+        {
+            LoadedAss.Add(abName, abDic[abName].LoadAsset<T>(ResName));
+        }
+        return LoadedAss[abName];
     }
 
     public Object LoadRes(string abName, string ResName, System.Type types)
     {
         LoadAB(abName);
-        return abDic[abName].LoadAsset(ResName, types);
+        if (!LoadedAss.ContainsKey(abName))
+        {
+            LoadedAss.Add(abName, abDic[abName].LoadAsset(ResName, types));
+        }
+        return LoadedAss[abName];
     }
+
+    public void LoadScnen(string abName, UnityAction<string> CallBack)
+    {
+        LoadAB(abName);
+        if (!LoadedAss.ContainsKey(abName))
+        {
+            LoadedAss.Add(abName, abDic[abName].GetAllScenePaths());
+        }
+        CallBack?.Invoke(LoadedAss[abName][0]);
+    }
+
+
+    #endregion
+
 
     #region 异步加载
 
+    List<IEnumerator> ieList = new List<IEnumerator>();
+    //private AssetBundle mainPage;
+    private AssetBundleManifest abManifest;
+    public float ProcessValue;
+    public float ResVale;
+    private AssetBundleCreateRequest CueentProcess;
+    private AssetBundleRequest CueentRes;
+
+    /// <summary>
+    /// 异步加载AB包
+    /// </summary>
+    /// <param name="abName"></param>
+    /// <param name="isMainPage"></param>
     public void LoadABAsync(string abName, bool isMainPage = false)
     {
         StartCoroutine(IE_LoadABAsync(abName, isMainPage));
     }
-    private AssetBundle mainPage;
+
 
     IEnumerator IE_LoadABAsync(string abName, bool isMainPage = false)
     {
+        abDic.Add(abName, null);
+        AssetBundleCreateRequest abcr = AssetBundle.LoadFromFileAsync(Path + abName);
+        CueentProcess = abcr;
+        yield return abcr;
+        abDic[abName] = abcr.assetBundle;
         if (isMainPage)
         {
-            abDic.Add(ABMainName, null);
-            AssetBundleCreateRequest abcr = AssetBundle.LoadFromFileAsync(Path + abName);
-            yield return abcr;
-
-            abDic[ABMainName] = abcr.assetBundle;
-            abmf = abcr.assetBundle.LoadAsset<AssetBundleManifest>("AssetBundleManifest");
-        }
-        else
-        {
-            abDic.Add(abName, null);
-            AssetBundleCreateRequest abcr = AssetBundle.LoadFromFileAsync(Path + abName);
-            yield return abcr;
-            abDic[abName] = abcr.assetBundle;
+            abManifest = abDic[abName].LoadAsset<AssetBundleManifest>("AssetBundleManifest");
         }
     }
 
+    /// <summary>
+    /// 异步加载AB包以及其主包和其依赖包
+    /// </summary>
+    /// <param name="abName"></param>
+    /// <param name="callback"></param>
+    /// <returns></returns>
+    private void LoadABPageAsync(string pageName, UnityAction callback)
+    {
+        IEnumerator ie = Ie_LoadABPage(pageName, callback);
+        ie.MoveNext();
+        ieList.Add(ie);
+    }
 
-
+    bool isAnsycLoadMainPage;
     IEnumerator Ie_LoadABPage(string abName,UnityAction callback)
     {
         //获取主包
-        if (!abDic.ContainsKey("StandaloneWindows"))
+        if ((!abDic.ContainsKey(ABMainName) || abDic[ABMainName] == null) && !isAnsycLoadMainPage)
         {
-            LoadABAsync(abName, true);
-            //yield return abName;
-            yield return abDic[ABMainName];
+            LoadABAsync(ABMainName, true);
+            isAnsycLoadMainPage = true;
+            yield return ABMainName;
         }
         else
         {
-            yield return abDic[ABMainName];
+            yield return ABMainName;
         }
 
-        string[] pagesName = abmf.GetAllDependencies(abName);//得到所有依赖包的名称
+        string[] pagesName = abManifest.GetAllDependencies(abName);//得到所有依赖包的名称
 
         for (int i = 0; i < pagesName.Length; i++)
         {
@@ -175,6 +264,32 @@ public class ABMgr : MonoBehaviour
     }
 
 
+    /// <summary>
+    /// 检测异步加载是否完成，如果完成，IE_LoadABPage协程继续执行
+    /// </summary>
+    private void DetectionLoadingCompleted()
+    {
+        for (int i = 0; i < ieList.Count; i++)
+        {
+            if (abDic.ContainsKey((string)ieList[i].Current)
+                && abDic[(string)ieList[i].Current] != null
+                || (string)ieList[i].Current == ABMainName && abDic.ContainsKey(ABMainName) && abDic[ABMainName] != null)
+            {
+                if (!ieList[i].MoveNext())
+                {
+                    ieList.Remove(ieList[i]);
+                }
+            }
+        }
+    }
+    private void Update()
+    {
+        DetectionLoadingCompleted();
+
+        ProcessValue = CueentProcess?.progress ?? 0;
+
+        ResVale = CueentRes?.progress ?? 0;
+    }
 
     /// <summary>
     /// 异步加载
@@ -184,40 +299,71 @@ public class ABMgr : MonoBehaviour
     /// <param name="CallBack"></param>
     public void LoadResAsync(string abName, string ResName, UnityAction<Object> CallBack)
     {
-        StartCoroutine(ResAsync(abName, ResName, CallBack));
+        LoadABPageAsync(abName, () =>
+        {
+            StartCoroutine(ResAsync(abName, ResName, CallBack));
+        });
     }
 
     public void LoadResAsync(string abName, string ResName, System.Type type, UnityAction<Object> CallBack)
     {
-        StartCoroutine(ResAsync(abName, ResName, type, CallBack));
+        LoadABPageAsync(abName, () =>
+        {
+            StartCoroutine(ResAsync(abName, ResName, type, CallBack));
+        });
     }
 
     public void LoadResAsync<T>(string abName, string ResName, UnityAction<T> CallBack) where T : Object
     {
-        StartCoroutine(ResAsync<T>(abName, ResName, CallBack));
+        LoadABPageAsync(abName, () =>
+        {
+            StartCoroutine(ResAsync<T>(abName, ResName, CallBack));
+        });
     }
+
+    public void LoadSceneAsync(string abName, UnityAction<string> CallBack)
+    {
+        LoadABPageAsync(abName, () =>
+        {
+            StartCoroutine(ResAsync(abName, CallBack));
+        });
+    }
+
+
 
     private IEnumerator ResAsync(string abName, string ResName, UnityAction<Object> CallBack)
     {
-        LoadAB(abName);
+
         AssetBundleRequest abr = abDic[abName].LoadAssetAsync(ResName);
+        CueentRes = abr;
         yield return abr;
         CallBack?.Invoke(abr.asset);
     }
 
     private IEnumerator ResAsync(string abName, string ResName, System.Type type, UnityAction<Object> CallBack)
     {
-        LoadAB(abName);
+
         AssetBundleRequest abr = abDic[abName].LoadAssetAsync(ResName, type);
+        CueentRes = abr;
         yield return abr;
         CallBack?.Invoke(abr.asset);
     }
+
     private IEnumerator ResAsync<T>(string abName, string ResName, UnityAction<T> CallBack) where T : Object
     {
-        LoadAB(abName);
+
         AssetBundleRequest abr = abDic[abName].LoadAssetAsync<T>(ResName);
+        CueentRes = abr;
         yield return abr;
         CallBack?.Invoke(abr.asset as T);
+    }
+
+    private IEnumerator ResAsync(string abName, UnityAction<string> CallBack)
+    {
+
+        string[] scenePaths = abDic[abName].GetAllScenePaths();
+        yield return scenePaths;
+        CallBack?.Invoke(scenePaths[0]);
     }
 
     #endregion
@@ -244,7 +390,18 @@ public class ABMgr : MonoBehaviour
     {
         AssetBundle.UnloadAllAssetBundles(WithLoad);
         abDic.Clear();
+    }
 
+    /// <summary>
+    /// 本地加载，不需要发布就可以加载。方便测试
+    /// </summary>
+    public void LocalLoad()
+    {
+#if UNITY_EDITOR
+        var t = AssetDatabase.GetAssetPathsFromAssetBundleAndAssetName("mcx", "mcx");
+        var gob = AssetDatabase.LoadAssetAtPath<GameObject>(t[0]);
+        Instantiate(gob);
+#endif 
     }
 
 }

@@ -1,14 +1,13 @@
 ManifestFileVersion: 0
-CRC: 314122731
+CRC: 2145689169
 AssetBundleManifest:
   AssetBundleInfos:
     Info_0:
-      Name: mcx_mat
+      Name: main
       Dependencies: {}
     Info_1:
-      Name: democube
+      Name: zombie1
       Dependencies: {}
     Info_2:
-      Name: gun
-      Dependencies:
-        Dependency_0: mcx_mat
+      Name: scene 1
+      Dependencies: {}

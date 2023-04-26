@@ -4,11 +4,13 @@ using System.IO;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.Networking;
+
 
 
 public class ABMgr : MonoBehaviour
@@ -57,16 +59,22 @@ public class ABMgr : MonoBehaviour
     private string CompareFile = "ABCompareInfo.txt";
 
 
-    #region 加载AssetBundle
 
     private void Awake()
     {
         Load();
+
+        Debug.Log(Application.persistentDataPath);
     }
+
+
+    #region 加载AssetBundle
+
+
 
     async public void Load()
     {
-        await System.Threading.Tasks.Task.Delay(3000);
+        await System.Threading.Tasks.Task.Delay(1000);
 
         ////异步方法
         //LoadSceneAsync("scene 1", (x) =>
@@ -439,7 +447,6 @@ public class ABMgr : MonoBehaviour
 
     #region 下载AssetBundle
 
-
     /// <summary>
     /// 从网络下载AssetBundle
     /// </summary>
@@ -448,6 +455,9 @@ public class ABMgr : MonoBehaviour
     /// <param name="callBack"></param>
     public void NetLoadAsset()
     {
+        //SomeMethod(ServerPath, "scene 1");
+        //SomeMethod(ServerPath, CompareFile);
+
 
         remoteABInfo.Clear();
         localABInfo.Clear();
@@ -456,69 +466,77 @@ public class ABMgr : MonoBehaviour
         ReadLoaclAsset();
 
 
-        List<Task> task = new List<Task>();
+        //TODO不直接下载 获取服务器文件的MD5码，如果不一样再从服务器进行下载
+
         //下载比较文件
-        StartCoroutine(LoadAssetBundle(ServerPath, CompareFile, () =>
+        LoadWebRequest(ServerPath, CompareFile, () =>
         {
-            //TODO-如果远端的配置文件和本地的配置文件MD5码相同则认为没有任何更新
-
-
-            //根据比较文件下载Ab文件
-            string info = File.ReadAllText(LoadSavePath + CompareFile);
-            string[] abs = info.Split("\n");
-            string[] infos = null;
-            foreach (var item in abs)
-            {
-                infos = item.Split("||");
-                //远端AB包信息
-                remoteABInfo.Add(infos[0], new ABInfo(infos[0], infos[1], infos[2]));
-                Debug.Log(infos[0]);
-            }
             Debug.Log("配置文件下载完成");
-
-
-            foreach (var item in remoteABInfo.Keys)//根据远端AB文件作为参考
-            {
-                if (!localABInfo.ContainsKey(item) || localABInfo[item] != remoteABInfo[item]) //本地没有文件或者 本地文件与服务器不同
-                {
-                    NeedLoadAB.Add(item);
-                }
-                else if (localABInfo[item] == remoteABInfo[item]) //资源相同
-                {
-                    localABInfo.Remove(item);
-                }
-                else
-                {
-                    //  localABInfo 剩下的都是本地多余信息 选择删除
-                }
-            }
-
-            if (NeedLoadAB.Count == 0)
-            {
-                Debug.Log("当前资源为最新版本无需下载");
-            }
-            else
-            {
-                for (int i = 0; i < NeedLoadAB.Count; i++)
-                {
-                    string loadname = NeedLoadAB[i];
-                    Debug.Log($"需要下载的包名{loadname}，下载大小为{ remoteABInfo[loadname].size / 1024f / 1024f} MB");
-                    StartCoroutine(LoadAssetBundle(ServerPath, loadname, () =>
-                    {
-                        Debug.Log("Load Success");
-                        NeedLoadAB.Remove(loadname);//下载成功之后从NeedLoadAB 移除
-                    }));
-                }
-            }
-            //ToDo 文件下载失败 再从NeedLoadAB下载没下载完成的部分 设置最大下载次数
-
-
-        }));
+            DoCompareFile();
+        });
 
         //LoadIISCompareFile(path, filename, callBack);
 
     }
 
+    private void DoCompareFile()
+    {
+        //根据比较文件下载Ab文件
+        string info = File.ReadAllText(LoadSavePath + CompareFile);
+        string[] abs = info.Split("\n");
+        string[] infos = null;
+        foreach (var item in abs)
+        {
+            infos = item.Split("||");
+            //远端AB包信息
+            remoteABInfo.Add(infos[0], new ABInfo(infos[0], infos[1], infos[2]));
+        }
+        foreach (var item in remoteABInfo.Keys)//根据远端AB文件作为参考
+        {
+            if (!localABInfo.ContainsKey(item) || localABInfo[item] != remoteABInfo[item]) //本地没有文件或者 本地文件与服务器不同
+            {
+                NeedLoadAB.Add(item);
+            }
+            else if (localABInfo[item] == remoteABInfo[item]) //资源相同
+            {
+                localABInfo.Remove(item);
+            }
+            else
+            {
+                // localABInfo 剩下的都是本地多余信息 选择删除
+            }
+        }
+
+
+        if (NeedLoadAB.Count == 0)
+        {
+            Debug.Log("当前资源为最新版本无需下载");
+        }
+        else
+        {
+            for (int i = 0; i < NeedLoadAB.Count; i++)
+            {
+                string loadname = NeedLoadAB[i];
+                Debug.Log($"需要下载的包名{loadname}，下载大小为{ remoteABInfo[loadname].size / 1024f / 1024f} MB");
+
+                LoadWebRequest(ServerPath, loadname, () =>
+                {
+                    Debug.Log("Load Success");
+                    NeedLoadAB.Remove(loadname);  //下载成功之后从NeedLoadAB 移除
+                });
+            }
+        }
+        //ToDo 文件下载失败 再从NeedLoadAB下载没下载完成的部分 设置最大下载次数
+    }
+
+
+
+
+
+
+    /// <summary>
+    /// 本地的AssetBundle文件
+    /// </summary>
     private void ReadLoaclAsset()
     {
         DirectoryInfo directory = Directory.CreateDirectory(LoadSavePath);
@@ -625,59 +643,122 @@ public class ABMgr : MonoBehaviour
     }
 
     /// <summary>
-    /// 使用webRequest下载
+    /// 使用WebRequest从服务器下载资源
     /// </summary>
-    /// <param name="Serverpath"></param>
-    /// <param name="filename"></param>
-    /// <param name="CallBack"></param>
-    /// <returns></returns>
-    IEnumerator LoadAssetBundle(string serverPath, string fileName, UnityAction callBack = null)
+    /// <param name="serverPath"></param>
+    /// <param name="fileName"></param>
+    /// <param name="callBack"></param>
+    async void LoadWebRequest(string serverPath, string fileName, UnityAction callBack = null)
     {
-        //服务器上的文件路径
-        string uri = serverPath + fileName;
+        int attemptCount = 1;
+        bool downloaded = false;
+        int maxAttempts = 4;
 
-        using (var webRequest = UnityWebRequest.Get(uri))
+        while (!cts.IsCancellationRequested && !downloaded && attemptCount < maxAttempts)
         {
-            yield return webRequest.SendWebRequest();
-
-            if (webRequest.result == UnityWebRequest.Result.ConnectionError)
+            try
             {
-                Debug.Log("Download Error:" + webRequest.error);
+                Debug.Log($"尝试下载[{fileName}],第[{attemptCount}]次");
+                System.Action<int> progressCallback = (value => Debug.Log($"{fileName}下载进度：{value}%"));
+                //var progress = new System.Progress<int>(value => Debug.Log($"下载进度：{value}%"));
+                await DownloadFileAsync(serverPath, fileName, progressCallback);
+                downloaded = true;
+                callBack?.Invoke();
+            }
+            catch (System.Exception ex)
+            {
+                await Task.Delay(2000);  //等待2s再重新尝试
+                Debug.Log($"下载失败：{ex.Message}");
+                attemptCount++;
+            }
+        }
+        Debug.Log($"下载失败,请检查网络并重试");
+    }
+
+    /// <summary>  Task结束标志      /// </summary>
+    private CancellationTokenSource cts = new CancellationTokenSource();
+
+    /// <summary>
+    /// 异步加载文件并保存
+    /// </summary>
+    /// <param name="url"></param>
+    /// <param name="fileName"></param>
+    /// <param name="progressCallback"></param>
+    /// <returns></returns>
+    public async Task DownloadFileAsync(string url, string fileName, System.Action<int> progressCallback)
+    {
+        try
+        {
+            var request = (HttpWebRequest)WebRequest.Create(url + fileName);
+            request.UseDefaultCredentials = true;
+            request.Proxy.Credentials = request.Credentials;
+            long existingFileSize = 0;
+            if (File.Exists(LoadSavePath + fileName)) //如果已经有本地文件了
+            {
+                // 获取已经下载的文件的大小
+                existingFileSize = new FileInfo(LoadSavePath + fileName).Length;
+
+                // 添加Range请求头，指定需要下载的文件范围
+                request.AddRange((int)existingFileSize);
+
+                Debug.Log($"继续下载{fileName}从 {existingFileSize} bytes");
             }
             else
             {
-                //下载完成后执行的回调
-                if (webRequest.isDone)
+                Debug.Log($"开始新下载{fileName}");
+            }
+
+            using (var response = (HttpWebResponse)await request.GetResponseAsync())
+            {
+                using (var responseStream = response.GetResponseStream())
                 {
-                    byte[] results = webRequest.downloadHandler.data;
-                    if (!Directory.Exists(LoadSavePath))
+                    using (var fileStream = new FileStream(LoadSavePath + fileName, FileMode.Append))
                     {
-                        Directory.CreateDirectory(LoadSavePath);
+                        byte[] buffer = new byte[1024 * 1024];
+                        int bytesRead;
+                        long totalBytesRead = existingFileSize;
+                        long totalBytes = response.ContentLength + existingFileSize;
+
+                        while (!cts.IsCancellationRequested && (bytesRead = await responseStream.ReadAsync(buffer, 0, buffer.Length)) > 0)
+                        {
+                            totalBytesRead += bytesRead;
+                            progressCallback?.Invoke((int)((double)totalBytesRead / totalBytes * 100));
+                            await fileStream.WriteAsync(buffer, 0, bytesRead);
+                        }
                     }
-                    using (FileStream fs = File.Create(LoadSavePath + fileName))
-                    {
-                        fs.Write(results, 0, results.Length);
-                        fs.Close();
-                    }
-
-                    //using (FileStream fs = File.Create(fileName))  //Task线程不能访问applocation
-                    //{
-                    //    fs.Write(results, 0, results.Length);
-                    //    fs.Close();
-                    //}
-
-                    //FileInfo fileInfo = new FileInfo(LoadSavePath + filename);
-                    //FileStream fs = fileInfo.Create();
-                    ////fs.Write(字节数组, 开始位置, 数据长度);
-                    //fs.Write(results, 0, results.Length);
-                    //fs.Flush(); //文件写入存储到硬盘
-                    //fs.Close(); //关闭文件流对象
-                    //fs.Dispose(); //销毁文件对象
-
-                    callBack?.Invoke();
                 }
+                Debug.Log($"{fileName}下载完成！");
             }
         }
+        catch (WebException ex) when (ex.Status == WebExceptionStatus.ProtocolError)
+        {
+            //Debug.Log($"下载失败，远程服务器返回无效 http 状态码 '{((HttpWebResponse)ex.Response).StatusCode}'.");
+            if (((HttpWebResponse)ex.Response).StatusCode == HttpStatusCode.RequestedRangeNotSatisfiable)
+            {
+                Debug.Log($"{fileName}无需下载");
+            }
+            else
+            {
+                throw new System.Exception($"远程服务器返回无效 http 状态码 '{((HttpWebResponse)ex.Response).StatusCode}'.");
+            }
+        }
+        catch (WebException ex) when (ex.Status == WebExceptionStatus.ConnectFailure)
+        {
+            //Debug.Log($"下载失败，客户端未能连接到远程服务器 '{url}'.");
+            throw new System.Exception($"客户端未能连接到远程服务器{url}");
+        }
+
+        catch (WebException ex)
+        {
+            //Debug.Log($"下载失败：{ex.Message}");
+            throw new System.Exception($"{ex.Message}");
+        }
+    }
+
+    private void OnApplicationQuit()
+    {
+        cts.Cancel();
+        Debug.Log("程序停止");
     }
 
     #endregion

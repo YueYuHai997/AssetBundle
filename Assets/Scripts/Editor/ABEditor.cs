@@ -5,8 +5,8 @@ using UnityEngine;
 using UnityEditor;
 using System.Security.Cryptography;
 using System.Text;
+using System.Linq;
 using System.Net;
-using System;
 using System.Threading.Tasks;
 
 public class ABEditor
@@ -40,6 +40,30 @@ public class ABEditor
         AssetDatabase.Refresh();
         Debug.Log("AB包对比文件生成成功");
     }
+
+    [MenuItem("AB包工具/移动资源到StreamingAsset")]
+    public static void MoveToStreamingAsset()
+    {
+        Object[] selectedAsset = Selection.GetFiltered(typeof(Object), SelectionMode.DeepAssets);
+        if (selectedAsset.Length == 0)
+        {
+            return; 
+        }
+        else
+        {
+            selectedAsset.ToList().ForEach(_ =>
+            {
+                string assetPath = AssetDatabase.GetAssetPath(_);
+                string fileName = assetPath.Substring(assetPath.LastIndexOf('/'));
+                
+                AssetDatabase.CopyAsset(assetPath, Application.streamingAssetsPath + "/AssetBundle" + fileName);
+                AssetDatabase.Refresh();
+
+                Debug.Log("MoveSuccess");
+            });
+        }
+    }
+
 
     [MenuItem("AB包工具/上传AB文件和对比文件")]
     public static void UpLoadALLAB()
@@ -78,7 +102,7 @@ public class ABEditor
             try
             {
                 //1.创建FTP链接 用于上传
-                FtpWebRequest req = FtpWebRequest.Create(new Uri("ftp://127.0.0.1/AB/PC" + fileName)) as FtpWebRequest;
+                FtpWebRequest req = FtpWebRequest.Create(new System.Uri("ftp://127.0.0.1/AB/PC" + fileName)) as FtpWebRequest;
                 //2. 设置一个通信凭证  这样才能上传
                 NetworkCredential nc = new NetworkCredential("usetname", "password");
                 req.Credentials = nc;
@@ -116,7 +140,7 @@ public class ABEditor
                 }
                 Debug.Log($"{fileName}上传成功");
             }
-            catch (Exception e)
+            catch (System.Exception e)
             {
                 Debug.Log($"{fileName}上传失败：[{ e }]");
             }
@@ -134,7 +158,7 @@ public class ABEditor
             //使用Windows登录方式
             _webClient.Credentials = new NetworkCredential("IUSR", "");
             //上传的链接地址（文件服务器）
-            Uri _uri = new Uri(@$"http://192.168.10.104:5000/AssetBundle/");
+            System.Uri _uri = new System.Uri(@$"http://192.168.10.104:5000/AssetBundle/");
             //上传成功事件注册
             _webClient.UploadFileCompleted += (_, Y) => 
             {
@@ -142,9 +166,8 @@ public class ABEditor
             };
             //异步从D盘上传文件到服务器
             _webClient.UploadFileAsync(_uri, "PUT", filePath);
-            Console.ReadKey();
         }
-        catch (Exception e)
+        catch (System.Exception e)
         {
             Debug.Log($"{fileName}上传失败：[{ e }]");
         }

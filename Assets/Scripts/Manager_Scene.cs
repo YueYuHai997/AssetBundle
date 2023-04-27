@@ -40,12 +40,13 @@ public static class Manager_Scene
         {
             if (async == null) return;
             LoadProcess = async.progress;
-            await Task.Delay(1);
+            await Task.Yield();
             //if (async.progress >= 0.9f) //当进度浮点值到达1.0并调用isDone。如果将allowSceneActivation设置为false，则进度将在 0.9 处停止，直到被设置为 true。这对于创建加载条来说极其有用。
             //{
             //    async.allowSceneActivation = true; //加载完成后自动跳转
             //}
         }
+        LoadProcess = 1.0f;
         callBack?.Invoke(scenename);
         CurrentSceneName = scenename;
     }

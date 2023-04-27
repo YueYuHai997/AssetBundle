@@ -10,14 +10,26 @@ using UnityEditor;
 using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.Networking;
-
-
+using UnityEngine.SceneManagement;
 
 public class ABMgr : MonoBehaviour
 {
 
-    /// <summary>     主包名    </summary>
-    public string ABMainName
+
+    //下载总大小
+    public float TotalLoad;
+    //下载当前下载量
+    public float CurrentLoad;
+
+    //ab包资源异步加载进度
+    public float ProcessValue;
+
+    //资源异步加载进度
+    public float ResVale;
+
+
+    /// <summary>    主包名    </summary>
+    private string ABMainName
     {
         get
         {
@@ -31,45 +43,92 @@ public class ABMgr : MonoBehaviour
         }
     }
 
-    /// <summary>    路径     </summary>
-    public string Path
-    {
-        get
-        {
-#if UNITY_EDITOR || UNITY_STANDALONE
-            return Application.streamingAssetsPath + "/AssetBundle/";
-#endif
-        }
-    }
-
-
     /// <summary>    文件下载路径     </summary>
     private string LoadSavePath
     {
         get
         {
+            return Application.persistentDataPath + $"/AssetBundle/{ABMainName}/";
+        }
+    }
+
+    /// <summary>     默认资源路径     </summary>
+    private string DefaultPath
+    {
+        get
+        {
+            return Application.streamingAssetsPath + $"/AssetBundle/{ABMainName}/";
+        }
+    }
+
+    /// <summary>     默认资源路径     </summary>
+    private string TempPath
+    {
+        get
+        {
+            return Application.temporaryCachePath + $"/AssetBundle/{ABMainName}/";
+        }
+    }
+
+    /// <summary>     服务器路径     </summary>
+    private string ServerPath
+    {
+        get
+        {
 #if UNITY_EDITOR || UNITY_STANDALONE
-            return Application.streamingAssetsPath + "/AssetBundle/";
+            return $"http://192.168.10.104:5000/AssetBundle/{ABMainName}/";
 #endif
         }
     }
 
-    private string ServerPath = "http://192.168.10.104:5000/AssetBundle/";
 
+    //配置文件包名字
     private string CompareFile = "ABCompareInfo.txt";
 
+    /// <summary>  远端AB包   </summary>
+    private Dictionary<string, ABInfo> remoteABInfo = new Dictionary<string, ABInfo>();
+
+    /// <summary>  本地AB包   </summary>
+    private Dictionary<string, ABInfo> localABInfo = new Dictionary<string, ABInfo>();
+
+    // <summary>  需要下载的AB包   </summary>
+    private List<string> NeedLoadAB = new List<string>();
+
+    /// <summary>  最终Ab包路径   </summary>
+    private Dictionary<string, string> ABPath = new Dictionary<string, string>();
+
+
+    UnityAction LoadFinish;
 
 
     private void Awake()
     {
         Load();
 
-        Debug.Log(Application.persistentDataPath);
+
+        Debug.Log("LoadSavePath:" + LoadSavePath);
+        Debug.Log("DefaultPath:" + DefaultPath);
+        Debug.Log("TempPath:" + TempPath);
+
+        LoadFinish += () =>
+        {
+            Debug.Log("开始资源加载");
+            LoadSceneAsync("scene 1", (_) =>
+            {
+                Manager_Scene.LoadSceneAsync(_, LoadSceneMode.Additive, (x) => 
+                {
+                    for (int i = 0; i < 10; i++)
+                    {
+                        LoadResAsync<GameObject>("zombie1", "zombie1", (p) => { Instantiate(p); });
+                    }
+                });
+
+            });
+        };
     }
 
 
     #region 加载AssetBundle
-
 
 
     async public void Load()
@@ -130,10 +189,10 @@ public class ABMgr : MonoBehaviour
     private void LoadAB(string abName)
     {
         //获取主包
-        if (!abDic.ContainsKey("StandaloneWindows"))
+        if (!abDic.ContainsKey(ABMainName))
         {
-            AssetBundle abmain = AssetBundle.LoadFromFile(Path + ABMainName);
-            abDic.Add("StandaloneWindows", abmain);
+            AssetBundle abmain = AssetBundle.LoadFromFile(ABPath[ABMainName] + ABMainName);
+            abDic.Add(ABMainName, abmain);
 
             //获取主包依赖
             abmf = abDic["StandaloneWindows"].LoadAsset<AssetBundleManifest>("AssetBundleManifest");
@@ -145,14 +204,14 @@ public class ABMgr : MonoBehaviour
         {
             if (!abDic.ContainsKey(request[i]))
             {
-                var Depent = AssetBundle.LoadFromFile(Path + request[i]);
+                var Depent = AssetBundle.LoadFromFile(ABPath[request[i]] + request[i]);
                 abDic.Add(request[i], Depent);
             }
         }
         //加载目标包
         if (!abDic.ContainsKey(abName))
         {
-            AssetBundle ab = AssetBundle.LoadFromFile(Path + abName);
+            AssetBundle ab = AssetBundle.LoadFromFile(ABPath[abName] + abName);
             abDic.Add(abName, ab);
         }
     }
@@ -212,8 +271,6 @@ public class ABMgr : MonoBehaviour
     List<IEnumerator> ieList = new List<IEnumerator>();
     //private AssetBundle mainPage;
     private AssetBundleManifest abManifest;
-    public float ProcessValue;
-    public float ResVale;
     private AssetBundleCreateRequest CueentProcess;
     private AssetBundleRequest CueentRes;
 
@@ -231,7 +288,7 @@ public class ABMgr : MonoBehaviour
     IEnumerator IE_LoadABAsync(string abName, bool isMainPage = false)
     {
         abDic.Add(abName, null);
-        AssetBundleCreateRequest abcr = AssetBundle.LoadFromFileAsync(Path + abName);
+        AssetBundleCreateRequest abcr = AssetBundle.LoadFromFileAsync(ABPath[abName] + abName);
         CueentProcess = abcr;
         yield return abcr;
         abDic[abName] = abcr.assetBundle;
@@ -453,11 +510,12 @@ public class ABMgr : MonoBehaviour
     /// <param name="path"></param>
     /// <param name="filename"></param>
     /// <param name="callBack"></param>
-    public void NetLoadAsset()
+    public async void NetLoadAsset()
     {
-        //SomeMethod(ServerPath, "scene 1");
-        //SomeMethod(ServerPath, CompareFile);
-
+        if (!Directory.Exists(LoadSavePath))
+            Directory.CreateDirectory(LoadSavePath);
+        if (!Directory.Exists(TempPath))
+            Directory.CreateDirectory(TempPath);
 
         remoteABInfo.Clear();
         localABInfo.Clear();
@@ -465,24 +523,55 @@ public class ABMgr : MonoBehaviour
 
         ReadLoaclAsset();
 
-
-        //TODO不直接下载 获取服务器文件的MD5码，如果不一样再从服务器进行下载
-
-        //下载比较文件
-        LoadWebRequest(ServerPath, CompareFile, () =>
+        //下载对比文件到临时路径
+        LoadWebRequest(ServerPath, CompareFile, TempPath, async () =>
         {
             Debug.Log("配置文件下载完成");
-            DoCompareFile();
-        });
 
+            if (!File.Exists(LoadSavePath + CompareFile) || GetMD5(TempPath + CompareFile) != GetMD5(LoadSavePath + CompareFile))
+            {
+                //比较临时文件和本地配置文件差异 并下载差异文件
+                await DoCompareFile();
+            }
+            else
+            {
+                string info = File.ReadAllText(TempPath + CompareFile);
+                string[] abs = info.Split("\n");
+                string[] infos = null;
+                foreach (var item in abs)
+                {
+                    infos = item.Split("||");
+                    //远端AB包信息
+                    if (File.Exists(LoadSavePath + infos[0]))
+                        ABPath.Add(infos[0], LoadSavePath);
+                    else if (ABPath.ContainsKey(infos[0]))
+                        ABPath[infos[0]] = DefaultPath;
+                    else
+                        Debug.LogError($"文件未找到{infos[0]}");
+                }
+
+                Debug.Log("当前资源为最新，无需更新");
+            }
+
+            //下载完成将临时配置文件写入下载路径 并删除临时路径
+            if (File.Exists(LoadSavePath + CompareFile))
+            {
+                File.Delete(LoadSavePath + CompareFile);
+            }
+            File.Move(TempPath + CompareFile, LoadSavePath + CompareFile);
+
+            Debug.Log("配置文件写入完成，完成更新");
+
+            LoadFinish?.Invoke();
+        });
         //LoadIISCompareFile(path, filename, callBack);
 
     }
 
-    private void DoCompareFile()
+    private async Task DoCompareFile()
     {
         //根据比较文件下载Ab文件
-        string info = File.ReadAllText(LoadSavePath + CompareFile);
+        string info = File.ReadAllText(TempPath + CompareFile);
         string[] abs = info.Split("\n");
         string[] infos = null;
         foreach (var item in abs)
@@ -490,23 +579,37 @@ public class ABMgr : MonoBehaviour
             infos = item.Split("||");
             //远端AB包信息
             remoteABInfo.Add(infos[0], new ABInfo(infos[0], infos[1], infos[2]));
+
+            if (!ABPath.ContainsKey(infos[0]))
+                ABPath.Add(infos[0], LoadSavePath);
         }
         foreach (var item in remoteABInfo.Keys)//根据远端AB文件作为参考
         {
-            if (!localABInfo.ContainsKey(item) || localABInfo[item] != remoteABInfo[item]) //本地没有文件或者 本地文件与服务器不同
+            //本地没有文件或者本地文件与服务器不同 并且不是默认文件
+            if (!localABInfo.ContainsKey(item) || localABInfo[item] != remoteABInfo[item])
             {
-                NeedLoadAB.Add(item);
+                if ((ABPath.ContainsKey(item) && ABPath[item] == DefaultPath))
+                {
+                }
+                else
+                {
+                    NeedLoadAB.Add(item);
+                }
             }
             else if (localABInfo[item] == remoteABInfo[item]) //资源相同
             {
                 localABInfo.Remove(item);
             }
-            else
-            {
-                // localABInfo 剩下的都是本地多余信息 选择删除
-            }
         }
 
+        UnityAction Dele = null;
+        foreach (var item in localABInfo.Keys)
+        {
+            File.Delete(LoadSavePath + item);
+            Debug.Log($"删除多余文件{ LoadSavePath + item }");
+        }
+
+        Dele?.Invoke();
 
         if (NeedLoadAB.Count == 0)
         {
@@ -518,20 +621,23 @@ public class ABMgr : MonoBehaviour
             {
                 string loadname = NeedLoadAB[i];
                 Debug.Log($"需要下载的包名{loadname}，下载大小为{ remoteABInfo[loadname].size / 1024f / 1024f} MB");
-
-                LoadWebRequest(ServerPath, loadname, () =>
+                TotalLoad += remoteABInfo[loadname].size / 1024f / 1024f;
+                LoadWebRequest(ServerPath, loadname, callBack: () =>
                 {
                     Debug.Log("Load Success");
                     NeedLoadAB.Remove(loadname);  //下载成功之后从NeedLoadAB 移除
                 });
             }
+            Debug.Log($"下载总大小为{ TotalLoad } MB");
         }
-        //ToDo 文件下载失败 再从NeedLoadAB下载没下载完成的部分 设置最大下载次数
+
+        while (!cts.IsCancellationRequested && NeedLoadAB.Count != 0)
+        {
+            await Task.Yield();
+        }
+
+        Debug.Log("资源全部下载完成");
     }
-
-
-
-
 
 
     /// <summary>
@@ -539,7 +645,7 @@ public class ABMgr : MonoBehaviour
     /// </summary>
     private void ReadLoaclAsset()
     {
-        DirectoryInfo directory = Directory.CreateDirectory(LoadSavePath);
+        DirectoryInfo directory = new DirectoryInfo(LoadSavePath);
         //该目录下的所有文件信息
         FileInfo[] fileInfos = directory.GetFiles();
         foreach (var item in fileInfos)
@@ -549,7 +655,27 @@ public class ABMgr : MonoBehaviour
                 localABInfo.Add(item.Name, new ABInfo(item.Name, item.Length, GetMD5(item.FullName)));
             }
         }
+
+        try
+        {
+            DirectoryInfo directory_D = new DirectoryInfo(DefaultPath);
+            //该目录下的所有文件信息
+            FileInfo[] fileInfos_D = directory_D.GetFiles();
+            foreach (var item in fileInfos_D)
+            {
+                if (item.Extension == "") //ab包没有后缀
+                {
+                    //localABInfo.Add(item.Name, new ABInfo(item.Name, item.Length, GetMD5(item.FullName)));
+                    ABPath[item.Name] = DefaultPath;
+                }
+            }
+        }
+        catch (System.Exception)
+        {
+            Debug.Log("没有默认AB包");
+        }
     }
+
 
     private static string GetMD5(string filepath)
     {
@@ -575,16 +701,6 @@ public class ABMgr : MonoBehaviour
     }
 
 
-    /// <summary>  远端AB包   </summary>
-    private Dictionary<string, ABInfo> remoteABInfo = new Dictionary<string, ABInfo>();
-
-    /// <summary>  本地AB包   </summary>
-    private Dictionary<string, ABInfo> localABInfo = new Dictionary<string, ABInfo>();
-
-    // <summary>  需要下载的AB包   </summary>
-    private List<string> NeedLoadAB = new List<string>();
-
-
     private class ABInfo
     {
         public string name;
@@ -603,7 +719,6 @@ public class ABMgr : MonoBehaviour
             this.size = size;
             this.md5 = md5;
         }
-
         public static bool operator ==(ABInfo a, ABInfo b)
         {
             if (!(a is null) && !(b is null) && a.md5 == b.md5) return true;
@@ -648,7 +763,7 @@ public class ABMgr : MonoBehaviour
     /// <param name="serverPath"></param>
     /// <param name="fileName"></param>
     /// <param name="callBack"></param>
-    async void LoadWebRequest(string serverPath, string fileName, UnityAction callBack = null)
+    async void LoadWebRequest(string serverPath, string fileName, string localPath = null, UnityAction callBack = null)
     {
         int attemptCount = 1;
         bool downloaded = false;
@@ -661,9 +776,8 @@ public class ABMgr : MonoBehaviour
                 Debug.Log($"尝试下载[{fileName}],第[{attemptCount}]次");
                 System.Action<int> progressCallback = (value => Debug.Log($"{fileName}下载进度：{value}%"));
                 //var progress = new System.Progress<int>(value => Debug.Log($"下载进度：{value}%"));
-                await DownloadFileAsync(serverPath, fileName, progressCallback);
+                await DownloadFileAsync(serverPath, fileName, localPath, progressCallback);
                 downloaded = true;
-                callBack?.Invoke();
             }
             catch (System.Exception ex)
             {
@@ -672,7 +786,13 @@ public class ABMgr : MonoBehaviour
                 attemptCount++;
             }
         }
-        Debug.Log($"下载失败,请检查网络并重试");
+        if (downloaded)
+        {
+            Debug.Log($"{fileName}下载成功");
+            callBack?.Invoke();
+        }
+        else
+            Debug.Log($"{fileName}下载失败,请检查网络并重试");
     }
 
     /// <summary>  Task结束标志      /// </summary>
@@ -685,7 +805,7 @@ public class ABMgr : MonoBehaviour
     /// <param name="fileName"></param>
     /// <param name="progressCallback"></param>
     /// <returns></returns>
-    public async Task DownloadFileAsync(string url, string fileName, System.Action<int> progressCallback)
+    public async Task DownloadFileAsync(string url, string fileName, string localpath = null, System.Action<int> progressCallback = null)
     {
         try
         {
@@ -693,10 +813,15 @@ public class ABMgr : MonoBehaviour
             request.UseDefaultCredentials = true;
             request.Proxy.Credentials = request.Credentials;
             long existingFileSize = 0;
-            if (File.Exists(LoadSavePath + fileName)) //如果已经有本地文件了
+            if (string.IsNullOrEmpty(localpath))
+            {
+                localpath = LoadSavePath ;
+            }
+
+            if (File.Exists(localpath + fileName)) //如果已经有本地文件了
             {
                 // 获取已经下载的文件的大小
-                existingFileSize = new FileInfo(LoadSavePath + fileName).Length;
+                existingFileSize = new FileInfo(localpath + fileName).Length;
 
                 // 添加Range请求头，指定需要下载的文件范围
                 request.AddRange((int)existingFileSize);
@@ -712,16 +837,17 @@ public class ABMgr : MonoBehaviour
             {
                 using (var responseStream = response.GetResponseStream())
                 {
-                    using (var fileStream = new FileStream(LoadSavePath + fileName, FileMode.Append))
+                    using (var fileStream = new FileStream(localpath + fileName, FileMode.Append))
                     {
                         byte[] buffer = new byte[1024 * 1024];
                         int bytesRead;
                         long totalBytesRead = existingFileSize;
                         long totalBytes = response.ContentLength + existingFileSize;
-
                         while (!cts.IsCancellationRequested && (bytesRead = await responseStream.ReadAsync(buffer, 0, buffer.Length)) > 0)
                         {
                             totalBytesRead += bytesRead;
+                            CurrentLoad = totalBytesRead;
+                            TotalLoad = totalBytes;
                             progressCallback?.Invoke((int)((double)totalBytesRead / totalBytes * 100));
                             await fileStream.WriteAsync(buffer, 0, bytesRead);
                         }

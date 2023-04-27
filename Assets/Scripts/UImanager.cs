@@ -6,7 +6,7 @@ using UnityEngine.UI;
 
 public class UImanager : MonoBehaviour
 {
-
+    public Slider NetLoad;
     public Slider sliderAB;
     public Slider sliderRes;
     public Slider sliderScene;
@@ -17,6 +17,11 @@ public class UImanager : MonoBehaviour
     {
 
         //sliderAB.value = Mathf.Lerp(sliderAB.value, aBMgr.ProcessValue, Time.deltaTime);
+
+
+        NetLoad.maxValue = aBMgr.TotalLoad;
+
+        NetLoad.value = aBMgr.CurrentLoad ;
 
         sliderAB.value = aBMgr.ProcessValue;
 

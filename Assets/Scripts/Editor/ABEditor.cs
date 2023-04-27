@@ -11,14 +11,21 @@ using System.Threading.Tasks;
 
 public class ABEditor
 {
-    public static string path = Application.streamingAssetsPath + "/AssetBundle/";
+
+    public static string platform = "StandaloneWindows";
+
+    //abBrowser生成路径
+    public static string abBrowser = Application.dataPath.Substring(0, Application.dataPath.LastIndexOf("/") + 1) + $"AssetBundles/{platform}/";
+
+    //本地ab包文件路径
+    public static string abTempPath = Application.streamingAssetsPath + $"/AssetBundle/Temp/{platform}/";
 
 
-    [MenuItem("AB包工具/创建对比文件")]
+    [MenuItem("AB包工具/Temp创建对比文件")]
     public static void CreateABCompareFile()
     {
         //文件夹信息类
-        DirectoryInfo directory = Directory.CreateDirectory(path);
+        DirectoryInfo directory = Directory.CreateDirectory(abTempPath);
         //该目录下的所有文件信息
         FileInfo[] fileInfos = directory.GetFiles();
 
@@ -35,41 +42,42 @@ public class ABEditor
         abCompareInfo = abCompareInfo.TrimEnd('\n');
         Debug.Log(abCompareInfo.ToString());
         //存储AB包对比文件
-        File.WriteAllText(path + "ABCompareInfo.txt", abCompareInfo.ToString());
+        File.WriteAllText(abTempPath + "ABCompareInfo.txt", abCompareInfo.ToString());
         //编辑器刷新
         AssetDatabase.Refresh();
         Debug.Log("AB包对比文件生成成功");
     }
 
-    [MenuItem("AB包工具/移动资源到StreamingAsset")]
+
+    [MenuItem("AB包工具/移动资源到Temp")]
     public static void MoveToStreamingAsset()
     {
-        Object[] selectedAsset = Selection.GetFiltered(typeof(Object), SelectionMode.DeepAssets);
-        if (selectedAsset.Length == 0)
+        if (!Directory.Exists(abTempPath))
         {
-            return; 
+            Directory.CreateDirectory(abTempPath);
         }
-        else
+
+        //文件夹信息类
+        DirectoryInfo directory = Directory.CreateDirectory(abBrowser);
+        //该目录下的所有文件信息
+        FileInfo[] fileInfos = directory.GetFiles();
+
+        foreach (var item in fileInfos)
         {
-            selectedAsset.ToList().ForEach(_ =>
+            if (item.Extension == "" ||
+                item.Extension == ".txt") //ab包没有后缀
             {
-                string assetPath = AssetDatabase.GetAssetPath(_);
-                string fileName = assetPath.Substring(assetPath.LastIndexOf('/'));
-                
-                AssetDatabase.CopyAsset(assetPath, Application.streamingAssetsPath + "/AssetBundle" + fileName);
-                AssetDatabase.Refresh();
-
-                Debug.Log("MoveSuccess");
-            });
+                File.Copy(abBrowser + item.Name, abTempPath + item.Name);
+            }
         }
+        AssetDatabase.Refresh();
     }
-
 
     [MenuItem("AB包工具/上传AB文件和对比文件")]
     public static void UpLoadALLAB()
     {
         //文件夹信息类
-        DirectoryInfo directory = Directory.CreateDirectory(path);
+        DirectoryInfo directory = Directory.CreateDirectory(abTempPath);
         //该目录下的所有文件信息
         FileInfo[] fileInfos = directory.GetFiles();
 

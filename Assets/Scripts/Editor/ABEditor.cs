@@ -73,6 +73,12 @@ public class ABEditor
         AssetDatabase.Refresh();
     }
 
+
+    public static int nowSeltIndex = 0;
+    public static string[] targetStrings = new string[3] { "Pc", "Android", "Ios" };
+    public string ServerIP;
+
+
     [MenuItem("AB包工具/上传AB文件和对比文件")]
     public static void UpLoadALLAB()
     {

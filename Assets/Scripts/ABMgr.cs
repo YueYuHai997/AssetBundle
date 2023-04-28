@@ -28,15 +28,16 @@ public class ABMgr : MonoBehaviour
     public float ResVale;
 
 
+
     /// <summary>    主包名    </summary>
     private string ABMainName
     {
         get
         {
-#if UNITY_DEITOR || UNITY_STANDALONE
+#if UNITY_EDITOR || UNITY_STANDALONE
             return "StandaloneWindows";
 #elif UNITY_IOS
-                return "Ios";
+                return "IOS";
 #elif UNITY_ANDROID
                 return "Android"
 #endif
@@ -48,7 +49,16 @@ public class ABMgr : MonoBehaviour
     {
         get
         {
-            return Application.persistentDataPath + $"/AssetBundle/{ABMainName}/";
+            string basepath = Application.persistentDataPath + $"/AssetBundle/{ABMainName}/";
+#if UNITY_EDITOR
+            return basepath;
+#elif          UNITY_STANDALONE
+            return basepath;
+#elif UNITY_IOS
+                return  basepath;
+#elif UNITY_ANDROID
+                return  basepath;
+#endif
         }
     }
 
@@ -57,7 +67,17 @@ public class ABMgr : MonoBehaviour
     {
         get
         {
-            return Application.streamingAssetsPath + $"/AssetBundle/{ABMainName}/";
+            string basepath = Application.streamingAssetsPath + $"/AssetBundle/{ABMainName}/";
+
+#if UNITY_EDITOR
+            return basepath;
+#elif UNITY_STANDALONE
+            return  basepath;
+#elif UNITY_IOS
+                return  basepath;
+#elif UNITY_ANDROID
+                return  basepath;
+#endif
         }
     }
 
@@ -66,7 +86,18 @@ public class ABMgr : MonoBehaviour
     {
         get
         {
-            return Application.temporaryCachePath + $"/AssetBundle/{ABMainName}/";
+            string basepath = Application.temporaryCachePath + $"/AssetBundle/{ABMainName}/";
+
+#if UNITY_EDITOR
+            return basepath;
+# elif  UNITY_STANDALONE
+            
+            return  basepath;
+#elif UNITY_IOS
+                return  basepath;
+#elif UNITY_ANDROID
+                return   basepath;  
+#endif
         }
     }
 
@@ -750,7 +781,6 @@ public class ABMgr : MonoBehaviour
         _webClient.DownloadFileCompleted += (_, Y) =>
         {
             Debug.Log($"{filenName}||{Y.Error}");
-            AssetDatabase.Refresh();
             callBack?.Invoke();
         };
         //异步下载

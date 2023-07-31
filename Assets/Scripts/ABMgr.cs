@@ -20,15 +20,10 @@ public class ABMgr : MonoBehaviour
     public float TotalLoad;
     //下载当前下载量
     public float CurrentLoad;
-
     //ab包资源异步加载进度
     public float ProcessValue;
-
     //资源异步加载进度
     public float ResVale;
-
-
-
     /// <summary>    主包名    </summary>
     private string ABMainName
     {
@@ -52,7 +47,7 @@ public class ABMgr : MonoBehaviour
             string basepath = Application.persistentDataPath + $"/AssetBundle/{ABMainName}/";
 #if UNITY_EDITOR
             return basepath;
-#elif          UNITY_STANDALONE
+#elif UNITY_STANDALONE
             return basepath;
 #elif UNITY_IOS
                 return  basepath;
@@ -81,7 +76,7 @@ public class ABMgr : MonoBehaviour
         }
     }
 
-    /// <summary>     默认资源路径     </summary>
+    /// <summary>     临时下载路径     </summary>
     private string TempPath
     {
         get
@@ -128,14 +123,12 @@ public class ABMgr : MonoBehaviour
     /// <summary>  最终Ab包路径   </summary>
     private Dictionary<string, string> ABPath = new Dictionary<string, string>();
 
-
     UnityAction LoadFinish;
 
 
     private void Awake()
     {
-        Load();
-
+        DemoLoad();
 
         Debug.Log("LoadSavePath:" + LoadSavePath);
         Debug.Log("DefaultPath:" + DefaultPath);
@@ -162,10 +155,9 @@ public class ABMgr : MonoBehaviour
     #region 加载AssetBundle
 
 
-    async public void Load()
+    public void DemoLoad()
     {
-        await System.Threading.Tasks.Task.Delay(1000);
-
+        //await System.Threading.Tasks.Task.Delay(1000);
         ////异步方法
         //LoadSceneAsync("scene 1", (x) =>
         //{
@@ -413,6 +405,7 @@ public class ABMgr : MonoBehaviour
 
         ResVale = CueentRes?.progress ?? 0;
     }
+
 
     /// <summary>
     /// 异步加载
@@ -686,7 +679,6 @@ public class ABMgr : MonoBehaviour
                 localABInfo.Add(item.Name, new ABInfo(item.Name, item.Length, GetMD5(item.FullName)));
             }
         }
-
         try
         {
             DirectoryInfo directory_D = new DirectoryInfo(DefaultPath);

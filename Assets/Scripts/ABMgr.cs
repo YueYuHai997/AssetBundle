@@ -6,6 +6,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Unity.VisualScripting;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Events;
@@ -508,8 +509,19 @@ public class ABMgr : MonoBehaviour
     /// <param name="WithLoad">是否销毁已加载物体</param>
     public void UnAllAB(bool WithLoad)
     {
-        AssetBundle.UnloadAllAssetBundles(WithLoad);
-        abDic.Clear();
+        UnityAction temp = null;
+        foreach (var item in abDic)
+        {
+            if (item.Key != ABMainName)
+            {
+                temp += () =>
+                {
+                    item.Value.Unload(WithLoad);
+                    abDic.Remove(item.Key);
+                };
+            }
+        }
+        temp?.Invoke();
     }
 
     #endregion
@@ -534,7 +546,7 @@ public class ABMgr : MonoBehaviour
     /// <param name="path"></param>
     /// <param name="filename"></param>
     /// <param name="callBack"></param>
-    public async void NetLoadAsset()
+    public  void NetLoadAsset()
     {
         if (!Directory.Exists(LoadSavePath))
             Directory.CreateDirectory(LoadSavePath);
